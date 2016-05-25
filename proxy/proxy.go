@@ -70,16 +70,16 @@ func NewProxy(cfg *Config, backend *storage.RedisClient) *ProxyServer {
 
 	proxy.fetchBlockTemplate()
 
-	proxy.hashrateExpiration, _ = time.ParseDuration(cfg.Proxy.HashrateExpiration)
+	proxy.hashrateExpiration = util.MustParseDuration(cfg.Proxy.HashrateExpiration)
 
-	refreshIntv, _ := time.ParseDuration(cfg.Proxy.BlockRefreshInterval)
+	refreshIntv := util.MustParseDuration(cfg.Proxy.BlockRefreshInterval)
 	refreshTimer := time.NewTimer(refreshIntv)
 	log.Printf("Set block refresh every %v", refreshIntv)
 
-	checkIntv, _ := time.ParseDuration(cfg.UpstreamCheckInterval)
+	checkIntv := util.MustParseDuration(cfg.UpstreamCheckInterval)
 	checkTimer := time.NewTimer(checkIntv)
 
-	stateUpdateIntv, _ := time.ParseDuration(cfg.Proxy.StateUpdateInterval)
+	stateUpdateIntv := util.MustParseDuration(cfg.Proxy.StateUpdateInterval)
 	stateUpdateTimer := time.NewTimer(stateUpdateIntv)
 
 	go func() {
@@ -211,7 +211,6 @@ func (cs *Session) handleMessage(s *ProxyServer, r *http.Request, req *JSONRpcRe
 	if req.Id == nil {
 		log.Printf("Missing RPC id from %s", cs.ip)
 		s.policy.ApplyMalformedPolicy(cs.ip)
-		r.Close = true
 		return
 	}
 
@@ -249,6 +248,7 @@ func (cs *Session) handleMessage(s *ProxyServer, r *http.Request, req *JSONRpcRe
 			}
 			cs.sendResult(req.Id, &reply)
 		} else {
+			s.policy.ApplyMalformedPolicy(cs.ip)
 			errReply := &ErrorReply{Code: -1, Message: "Malformed request"}
 			cs.sendError(req.Id, errReply)
 		}

@@ -17,7 +17,7 @@ const (
 )
 
 func (s *ProxyServer) ListenTCP() {
-	timeout, _ := time.ParseDuration(s.config.Proxy.Stratum.Timeout)
+	timeout := util.MustParseDuration(s.config.Proxy.Stratum.Timeout)
 	s.timeout = timeout
 
 	addr, err := net.ResolveTCPAddr("tcp", s.config.Proxy.Stratum.Listen)
@@ -72,7 +72,7 @@ func (s *ProxyServer) handleTCPClient(conn *net.TCPConn, uuid int64, ip string) 
 		data, isPrefix, err := connbuff.ReadLine()
 		if isPrefix {
 			log.Printf("Socket flood detected from %s", ip)
-			// TODO: Ban client
+			s.policy.BanClient(ip)
 			return err
 		} else if err == io.EOF {
 			log.Printf("Client %s disconnected", ip)
@@ -200,10 +200,10 @@ func (s *ProxyServer) broadcastNewJobs() {
 	}
 	reply := []string{t.Header, t.Seed, s.diff}
 
-	count := 0
 	s.sessionsMu.RLock()
-	count = len(s.sessions)
-	s.sessionsMu.RUnlock()
+	defer s.sessionsMu.RUnlock()
+
+	count := len(s.sessions)
 	log.Printf("Broadcasting new job to %v stratum miners", count)
 
 	start := time.Now()
@@ -213,6 +213,7 @@ func (s *ProxyServer) broadcastNewJobs() {
 	for _, m := range s.sessions {
 		n++
 		bcast <- n
+
 		go func(session *Session) {
 			err := session.pushNewJob(&reply)
 			<-bcast

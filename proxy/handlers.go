@@ -6,15 +6,12 @@ import (
 	"strings"
 
 	"../rpc"
+	"../util"
 )
 
-var noncePattern *regexp.Regexp
-var addressPattern *regexp.Regexp
-
-func init() {
-	noncePattern = regexp.MustCompile("^0x[0-9a-f]{16}$")
-	addressPattern = regexp.MustCompile("^0x[0-9a-fA-F]{40}$")
-}
+// Allow only lowercase hexadecimal with 0x prefix
+var noncePattern = regexp.MustCompile("^0x[0-9a-f]{16}$")
+var hashPattern = regexp.MustCompile("^0x[0-9a-f]{64}$")
 
 // Stratum
 func (s *ProxyServer) handleLoginRPC(cs *Session, params []string, id string) (bool, *ErrorReply) {
@@ -23,7 +20,10 @@ func (s *ProxyServer) handleLoginRPC(cs *Session, params []string, id string) (b
 	}
 
 	login := strings.ToLower(params[0])
-	if !addressPattern.MatchString(login) {
+	if !s.policy.ApplyLoginPolicy(login, cs.ip) {
+		return false, &ErrorReply{Code: -1, Message: "You are blacklisted"}
+	}
+	if !util.IsValidHexAddress(login) {
 		return false, &ErrorReply{Code: -1, Message: "Invalid login"}
 	}
 	cs.login = login
@@ -58,26 +58,26 @@ func (s *ProxyServer) handleSubmitRPC(cs *Session, login, id string, params []st
 
 	if len(params) != 3 {
 		s.policy.ApplyMalformedPolicy(cs.ip)
-		log.Printf("Malformed params from %s@%s", login, cs.ip)
+		log.Printf("Malformed params from %s@%s %v", login, cs.ip, params)
 		return false, &ErrorReply{Code: -1, Message: "Malformed params"}
 	}
 
-	if !noncePattern.MatchString(params[0]) {
+	if !noncePattern.MatchString(params[0]) || !hashPattern.MatchString(params[1]) || !hashPattern.MatchString(params[2]) {
 		s.policy.ApplyMalformedPolicy(cs.ip)
-		log.Printf("Malformed nonce from %s@%s", login, cs.ip)
-		return false, &ErrorReply{Code: -1, Message: "Malformed nonce"}
+		log.Printf("Malformed PoW result from %s@%s %v", login, cs.ip, params)
+		return false, &ErrorReply{Code: -1, Message: "Malformed PoW result"}
 	}
 	t := s.currentBlockTemplate()
 	exist, validShare := s.processShare(login, id, cs.ip, t, params)
 	s.policy.ApplySharePolicy(cs.ip, !exist && validShare)
 
 	if exist {
-		log.Printf("Duplicate share %s from %s@%s params: %v", params[0], login, cs.ip, params)
+		log.Printf("Duplicate share from %s@%s %v", login, cs.ip, params)
 		return false, &ErrorReply{Code: -1, Message: "Duplicate share"}
 	}
 
 	if !validShare {
-		log.Printf("Invalid share from %s@%s with %v nonce", login, cs.ip, params[0])
+		log.Printf("Invalid share from %s@%s", login, cs.ip)
 		return false, nil
 	}
 
