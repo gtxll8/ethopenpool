@@ -7,10 +7,10 @@ import (
 	"strings"
 	"sync"
 
-	"../rpc"
-	"../util"
-
 	"github.com/ethereum/go-ethereum/common"
+
+	"github.com/sammy007/open-ethereum-pool/rpc"
+	"github.com/sammy007/open-ethereum-pool/util"
 )
 
 const maxBacklog = 3
@@ -82,7 +82,7 @@ func (s *ProxyServer) fetchBlockTemplate() {
 	}
 	if t != nil {
 		for k, v := range t.headers {
-			if v.height >= height-maxBacklog {
+			if v.height > height-maxBacklog {
 				newTemplate.headers[k] = v
 			}
 		}
